@@ -20,7 +20,7 @@
 
 #define MPP_ALIGN(x, a)         (((x)+(a)-1)&~((a)-1))
 
-//rk系列芯片枚举
+//rk系列芯片枚举手动阀发达发生大法师发多少范德萨f 
 typedef enum RockchipSocType_e {
     ROCKCHIP_SOC_AUTO,
     ROCKCHIP_SOC_RK3036,
