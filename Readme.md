@@ -15,49 +15,9 @@
 
 ## 整体架构
 
-```mermaid
-flowchart TB
-    subgraph INPUT["输入层"]
-        V["视频文件 video.mp4"]
-        RT["帧读取线程<br/>OpenCV 解码"]
-        V --> RT
-    end
-    subgraph SCHED["调度层"]
-        Q1[("帧队列 SafeQueue<br/>有界队列 · 背压")]
-        AGG["聚合线程<br/>任务分发 + 按帧序号保序收集结果"]
-        Q1 --> AGG
-    end
-    subgraph INFER["推理层（线程池）"]
-        W1["工作线程 1<br/>Yolov5s 实例 + RKNN 上下文"]
-        W2["工作线程 2<br/>Yolov5s 实例 + RKNN 上下文"]
-        W3["工作线程 3<br/>Yolov5s 实例 + RKNN 上下文"]
-        NPU["RK3588 NPU 三个核心"]
-        W1 --> NPU
-        W2 --> NPU
-        W3 --> NPU
-        PP["后处理<br/>三输出头解码 + NMS"]
-        NPU --> PP
-    end
-    MODEL["yolov5s.rknn（INT8 量化）<br/>COCO 80 类标签"]
-    subgraph OUTPUT["输出层"]
-        Q2[("结果队列 SafeQueue")]
-        WT["写线程<br/>绘制检测框"]
-        RGA["RGA 硬件转换<br/>BGR → NV12"]
-        MPP["MPP 硬件编码<br/>H.264"]
-        WT --> RGA --> MPP
-    end
-    subgraph STREAM["推流层"]
-        RTMP["RTMP 推流<br/>FFmpeg / libavformat"]
-        PLAYER["播放端<br/>ffplay / VLC / OBS"]
-        RTMP --> PLAYER
-    end
-    RT --> Q1
-    AGG --> W1 & W2 & W3
-    MODEL -.->|每个实例各加载一份| INFER
-    PP --> Q2
-    Q2 --> WT
-    MPP --> RTMP
-```
+<p align="center">
+  <img src="docs/architecture.png" alt="整体架构图" width="920">
+</p>
 
 ## 项目简介
 
