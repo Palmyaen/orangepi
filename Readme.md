@@ -1,26 +1,41 @@
-# YOLOv5s on RK3588 — NPU Detection Pipeline with Hardware Encoding & RTMP Streaming
+<div align="center">
 
-A complete, end-to-end C++ edge-AI pipeline for Rockchip RK3588 boards (such as the Orange Pi 5): YOLOv5s object detection accelerated by the RK3588 NPU, with the annotated video hardware-encoded and pushed out as a live RTMP stream — everything runs on the board, no cloud involved.
+# YOLOv5s Edge-AI Pipeline for RK3588
 
-<!-- Demo: record a short clip of the output stream (OBS / ffplay) and add it here, e.g. docs/demo.gif — a moving demo is the single best thing you can do for this page. -->
+**Real-time object detection on the Rockchip RK3588 NPU — parallel 3-core inference, hardware encoding, live RTMP streaming. One board, zero cloud.**
 
-## Features
+![Platform](https://img.shields.io/badge/platform-Rockchip%20RK3588%20%7C%20Orange%20Pi%205-e95420)
+![Language](https://img.shields.io/badge/C%2B%2B-14-00599C?logo=cplusplus)
+![Runtime](https://img.shields.io/badge/runtime-RKNN%20%7C%20RGA%20%7C%20MPP-red)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-- **All three NPU cores busy** — a thread pool runs one RKNN context per worker thread (3 by default, matching the RK3588's 3-core NPU), so frames are inferred in parallel instead of one by one.
-- **Order-preserving output** — an aggregator thread collects the parallel results and releases frames in their original sequence (up to 10 frames in flight), so the output stream stays in order even though inference is concurrent.
-- **Hardware all the way down** — RGA converts BGR → NV12, Rockchip MPP hardware-encodes H.264, and FFmpeg (libavformat) pushes the RTMP stream. The CPU mostly just moves frames between thread-safe queues.
+</div>
+
+Complete, working RK3588 NPU examples are surprisingly scarce — most material online covers a single inference call on a still image. This project is the missing end-to-end reference: a full video pipeline that reads frames, runs YOLOv5s detection across **all three NPU cores in parallel**, keeps the output in frame order, hardware-encodes the annotated video, and pushes it out as a live RTMP stream.
+
+<!-- Demo: record a short clip of the output stream (OBS / ffplay) and add it here as docs/demo.gif — a moving demo is the single most persuasive thing on this page. -->
+
+## Highlights
+
+- **3-core NPU parallelism** — a thread pool holds one RKNN context per worker thread (3 by default, one per RK3588 NPU core). Frames are inferred concurrently instead of one by one.
+- **Order-preserving concurrency** — an aggregator thread tracks in-flight futures by frame index (up to 10 in flight) and releases results in the original sequence, so parallelism never scrambles the output stream.
+- **Hardware pipeline end to end** — RGA converts BGR → NV12, Rockchip MPP hardware-encodes H.264 (GOP = 2 × fps), FFmpeg/libavformat muxes and pushes RTMP. The CPU mostly moves frames between bounded, thread-safe queues.
+- **Production-shaped C++** — `std::future`-based task submission, bounded queues with backpressure, clean separation between capture, inference, and streaming stages.
 - **INT8 YOLOv5s** — quantized RKNN model (`model/yolov5s.rknn`, ~9.4 MB), COCO 80 classes, three detection heads with C++ NMS post-processing.
 
-## Pipeline
+## Architecture
 
-```
-video.mp4
-   │  Read thread (OpenCV VideoCapture)
-   ▼
-SafeQueue ──► Aggregator ──► Thread pool: 3 × Yolov5s instances (RKNN, one per NPU core)
-                              │  futures collected by frame index, released in order
-                              ▼
-              Write thread ──► RGA: BGR → NV12 ──► MPP: H.264 hardware encode ──► FFmpeg: RTMP push
+```mermaid
+flowchart LR
+    A[Video file] -->|Read thread<br/>OpenCV| B[(SafeQueue)]
+    B --> C{Aggregator}
+    C --> D[Thread pool<br/>3 × Yolov5s / RKNN<br/>one per NPU core]
+    D -->|futures, re-ordered<br/>by frame index| E[(SafeQueue)]
+    E --> F[Write thread]
+    F --> G[RGA<br/>BGR → NV12]
+    G --> H[MPP<br/>H.264 encode]
+    H --> I[FFmpeg<br/>RTMP push]
+    I --> J[RTMP server<br/>live stream]
 ```
 
 ## Requirements
@@ -74,12 +89,19 @@ Before running, set your own RTMP target in `main.cpp` (default `rtmp://192.168.
 | `model/` | `yolov5s.rknn` (INT8) + COCO 80-class label list |
 | `3rdparty/` | RKNN runtime and RGA libraries (aarch64) |
 
-## Notes & Roadmap
+## Roadmap
 
-- Input is currently a video file; camera / RTSP input is a natural next step.
-- A local `output.avi` writer is scaffolded in `main.cpp` but not yet wired into the write thread — output currently goes to the RTMP stream only.
-- Planned: a config file instead of hard-coded paths, and support for newer models (YOLOv8 / YOLO11).
+- [ ] Camera / RTSP input (currently file input)
+- [ ] Wire up the local `output.avi` recording scaffolded in `main.cpp`
+- [ ] Config file instead of hard-coded paths
+- [ ] Support for newer models (YOLOv8 / YOLO11)
+
+Contributions and issues are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+[MIT](LICENSE) © Hanzhe Xiao
 
 ## 中文简介
 
-在香橙派等 RK3588 开发板上运行的 YOLOv5s 目标检测完整流水线：线程池并行调用 NPU 的三个核心做推理（每个工作线程持有一个 RKNN 上下文），聚合线程按帧序整理并行推理结果，写线程经 RGA 做 BGR → NV12 转换、MPP 硬件 H.264 编码，再通过 RTMP 实时推流。模型为 INT8 量化的 YOLOv5s（COCO 80 类），构建与配置方法见上文。
+在香橙派等 RK3588 开发板上运行的 YOLOv5s 目标检测完整流水线：线程池并行调用 NPU 的三个核心做推理（每个工作线程持有一个 RKNN 上下文），聚合线程按帧序整理并行推理结果，写线程经 RGA 做 BGR → NV12 转换、MPP 硬件 H.264 编码，再通过 RTMP 实时推流。模型为 INT8 量化的 YOLOv5s（COCO 80 类）。构建与配置方法见上文。
